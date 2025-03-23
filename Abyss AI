@@ -1,0 +1,324 @@
+import webbrowser
+import speech_recognition as sr
+import pyttsx3
+import datetime
+import mysql.connector
+import wikipedia
+import pywhatkit
+import pyjokes
+import re
+import os  # For environment variables
+
+# Initialize the recognizer and text-to-speech engine
+listener = sr.Recognizer()
+engine = pyttsx3.init()
+engine.setProperty('rate', 200)
+
+# Secure MySQL connection setup
+try:
+    conn = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password=os.getenv("MYSQL_PASSWORD") or input("Enter MySQL password: ")  # Use environment variable or prompt
+    )
+    cursor = conn.cursor()
+    print("Connected to MySQL successfully!")
+except mysql.connector.Error as e:
+    print(f"Error connecting to MySQL: {e}")
+    exit()
+
+
+# Function to convert text to speech
+def talk(text):
+    engine.say(text)
+    engine.runAndWait()
+
+
+# Function to listen to voice commands
+def take_command():
+    while True:
+        try:
+            with sr.Microphone() as source:
+                print("Listening...")
+                listener.adjust_for_ambient_noise(source, duration=1)
+                audio = listener.listen(source, timeout=5, phrase_time_limit=7)
+                command = listener.recognize_google(audio).lower()
+                print(f"You said: {command}\n")
+
+                talk(f"Did you say: {command}?")
+                confirmation = input("Confirm (yes/no): ").strip().lower()
+
+                if confirmation == "yes":
+                    return command
+                else:
+                    talk("Please repeat your command.")
+
+        except sr.UnknownValueError:
+            talk("I didn't catch that. Could you repeat?")
+        except sr.RequestError:
+            talk("I'm having trouble connecting to the internet. Please try again.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            talk("An unexpected error occurred. Please try again.")
+
+
+# Function to generate a unique student ID
+def generate_student_id(name):
+    base_id = re.sub(r'[^a-zA-Z0-9]', '', name)[:6]
+    timestamp = datetime.datetime.now().strftime("%H%M%S")
+    return base_id + timestamp
+
+
+# Greeting function
+def wish_me():
+    hour = datetime.datetime.now().hour
+    if hour < 12:
+        talk("Good morning!")
+    elif hour < 18:
+        talk("Good afternoon!")
+    else:
+        talk("Good evening!")
+
+
+def open_website(command):
+    """Open a website based on user command."""
+    try:
+        talk("Opening website, sir.")
+        site = command.replace("open website", "").strip()
+        webbrowser.open(f"https://www.{site}.com")
+    except Exception as e:
+        talk("Sorry, there was an error opening the website.")
+        print(f"Error: {e}")
+
+
+# Function to create a database
+def create_database():
+    cursor.execute("SHOW DATABASES")
+    databases = [db[0] for db in cursor.fetchall()]
+
+    if databases:
+        talk("Existing databases found. Please choose one or create a new one.")
+        print("Available databases:", databases)
+        db_name = input("Enter an existing database name or a new one: ")
+    else:
+        talk("No databases found. Please enter a new database name.")
+        db_name = input("Enter the database name: ")
+
+    if db_name not in databases:
+        cursor.execute(f"CREATE DATABASE {db_name}")
+        conn.commit()
+        talk(f"Database {db_name} created successfully.")
+
+    conn.database = db_name
+    talk(f"Using database {db_name}.")
+
+
+# Function to create a table
+def create_table():
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS marks (
+            student_id VARCHAR(20) PRIMARY KEY,
+            student_name VARCHAR(100) NOT NULL,
+            subject VARCHAR(100) NOT NULL,
+            marks INT NOT NULL
+        )
+    ''')
+    conn.commit()
+    talk("Table created successfully.")
+
+
+# Function to insert marks
+def insert_marks():
+    talk("Let's insert student marks.")
+    try:
+        num_students = int(input("How many students? "))
+
+        for _ in range(num_students):
+            student_name = input("Enter student name: ").strip()
+            if not student_name:
+                talk("Invalid name. Please try again.")
+                continue
+
+            student_id = generate_student_id(student_name)
+            subject = input("Enter subject: ").strip()
+            if not subject:
+                talk("Invalid subject. Please try again.")
+                continue
+
+            try:
+                marks = int(input("Enter marks: "))
+            except ValueError:
+                talk("Invalid marks. Please enter a number.")
+                continue
+
+            cursor.execute("INSERT INTO marks (student_id, student_name, subject, marks) VALUES (%s, %s, %s, %s)",
+                           (student_id, student_name, subject, marks))
+
+        conn.commit()
+        talk("Data successfully stored.")
+
+    except mysql.connector.Error as db_error:
+        talk(f"Database error: {db_error}")
+    except Exception as e:
+        talk(f"Unexpected error: {e}")
+
+
+# Function to delete data
+def delete_data():
+    student_id = input("Enter student ID to delete record: ").strip()
+    cursor.execute("DELETE FROM marks WHERE student_id = %s", (student_id,))
+    conn.commit()
+    talk("Record deleted successfully.")
+
+
+def get_student_data():
+    talk("Please enter the Student ID to fetch data.")
+    student_id = input("Enter Student ID: ").strip()
+
+    cursor.execute("SELECT student_name, subject, marks FROM marks WHERE student_id = %s", (student_id,))
+    result = cursor.fetchone()
+
+    if result:
+        student_name, subject, marks = result
+        talk(f"Student Name: {student_name}, Subject: {subject}, Marks: {marks}.")
+        print(f"Student Name: {student_name}, Subject: {subject}, Marks: {marks}.")
+    else:
+        talk("No record found for the given Student ID.")
+
+
+# Function to retrieve highest marks
+def get_highest_marks():
+    cursor.execute("SELECT student_name, subject, marks FROM marks ORDER BY marks DESC LIMIT 1")
+    result = cursor.fetchone()
+    if result:
+        talk(f"Highest marks: {result[0]} in {result[1]} with {result[2]} marks.")
+    else:
+        talk("No records found.")
+
+
+# Function to retrieve lowest marks
+def get_lowest_marks():
+    cursor.execute("SELECT student_name, subject, marks FROM marks ORDER BY marks ASC LIMIT 1")
+    result = cursor.fetchone()
+    if result:
+        talk(f"Lowest marks: {result[0]} in {result[1]} with {result[2]} marks.")
+    else:
+        talk("No records found.")
+
+
+# Function to calculate mean marks
+def get_mean_marks():
+    cursor.execute("SELECT AVG(marks) FROM marks")
+    result = cursor.fetchone()
+    if result and result[0] is not None:
+        talk(f"The average marks are {result[0]:.2f}.")
+    else:
+        talk("No records found.")
+
+
+def edit_student_data():
+    student_id = input("Enter the Student ID to edit record: ").strip()
+
+    cursor.execute("SELECT * FROM marks WHERE student_id = %s", (student_id,))
+    result = cursor.fetchone()
+
+    if not result:
+        talk("No record found for the given Student ID.")
+        return
+
+    talk(f"Student Found: {result[1]}, Subject: {result[2]}, Marks: {result[3]}. What would you like to edit?")
+    print(f"1. Edit Name\n2. Edit Subject\n3. Edit Marks")
+
+    choice = input("Choose what to edit (1/2/3): ").strip()
+
+    if choice == "1":
+        new_name = input("Enter new Student Name: ").strip()
+        cursor.execute("UPDATE marks SET student_name = %s WHERE student_id = %s", (new_name, student_id))
+        talk("Student Name updated successfully.")
+    elif choice == "2":
+        new_subject = input("Enter new Subject: ").strip()
+        cursor.execute("UPDATE marks SET subject = %s WHERE student_id = %s", (new_subject, student_id))
+        talk("Subject updated successfully.")
+    elif choice == "3":
+        new_marks = int(input("Enter new Marks: "))
+        cursor.execute("UPDATE marks SET marks = %s WHERE student_id = %s", (new_marks, student_id))
+        talk("Marks updated successfully.")
+    else:
+        talk("Invalid choice. Please try again.")
+
+    conn.commit()
+
+
+# Main function to run the assistant
+def run_assistant():
+    wish_me()
+    talk("How can I assist you?")
+
+    while True:
+        command = take_command()
+        if not command:
+            continue
+
+        if 'create database' in command:
+            create_database()
+        elif 'create table' in command:
+            create_table()
+        elif 'insert data' in command:
+            insert_marks()
+        elif 'delete record' in command:
+            delete_data()
+        elif 'highest marks' in command:
+            get_highest_marks()
+        elif 'lowest marks' in command:
+            get_lowest_marks()
+        elif 'average marks' in command:
+            get_mean_marks()
+
+        elif 'retrive the data' in command or 'find the data':
+            get_student_data()
+
+        elif 'edit record' in command or 'update student' in command:
+            edit_student_data()
+
+        elif 'youtube search' in command:
+            search_query = command.replace('youtube search', '').strip()
+            webbrowser.open(f"https://www.youtube.com/results?search_query={search_query}")
+            talk("Here are your YouTube search results.")
+
+        elif 'google search' in command:
+            search_query = command.replace('google search', '').strip()
+            pywhatkit.search(search_query)
+            talk("Here are your Google search results.")
+
+        elif 'open website' in command:
+            open_website(command)
+
+
+
+
+
+        elif 'tell me about' in command or 'search' in command:
+            query = command.replace("tell me about", "").replace("search", "").strip()
+            try:
+                results = wikipedia.summary(query, sentences=2)
+                talk(f"According to Wikipedia, {results}")
+            except wikipedia.exceptions.DisambiguationError:
+                talk("There are multiple results. Please be more specific.")
+            except wikipedia.exceptions.PageError:
+                talk("No information found on Wikipedia.")
+
+        if 'time' in command:
+            time = datetime.datetime.now().strftime("%I:%M %p")
+            talk(f"The current time is {time}.")
+
+
+
+        elif 'exit' in command:
+            talk("Goodbye! Have a great day!")
+            break
+        else:
+            talk("Sorry, I didn't understand. Please try again.")
+
+
+# Run the assistant
+run_assistant()
