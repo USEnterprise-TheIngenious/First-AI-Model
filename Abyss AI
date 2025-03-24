@@ -7,19 +7,19 @@ import wikipedia
 import pywhatkit
 import pyjokes
 import re
-import os  # For environment variables
+import os  
 
-# Initialize the recognizer and text-to-speech engine
+
 listener = sr.Recognizer()
 engine = pyttsx3.init()
 engine.setProperty('rate', 200)
 
-# Secure MySQL connection setup
+
 try:
     conn = mysql.connector.connect(
         host="localhost",
         user="root",
-        password=os.getenv("MYSQL_PASSWORD") or input("Enter MySQL password: ")  # Use environment variable or prompt
+        password=os.getenv("MYSQL_PASSWORD") or input("Enter MySQL password: ")  
     )
     cursor = conn.cursor()
     print("Connected to MySQL successfully!")
@@ -28,13 +28,13 @@ except mysql.connector.Error as e:
     exit()
 
 
-# Function to convert text to speech
+
 def talk(text):
     engine.say(text)
     engine.runAndWait()
 
 
-# Function to listen to voice commands
+
 def take_command():
     while True:
         try:
@@ -62,14 +62,14 @@ def take_command():
             talk("An unexpected error occurred. Please try again.")
 
 
-# Function to generate a unique student ID
+
 def generate_student_id(name):
     base_id = re.sub(r'[^a-zA-Z0-9]', '', name)[:6]
     timestamp = datetime.datetime.now().strftime("%H%M%S")
     return base_id + timestamp
 
 
-# Greeting function
+
 def wish_me():
     hour = datetime.datetime.now().hour
     if hour < 12:
@@ -80,18 +80,10 @@ def wish_me():
         talk("Good evening!")
 
 
-def open_website(command):
-    """Open a website based on user command."""
-    try:
-        talk("Opening website, sir.")
-        site = command.replace("open website", "").strip()
-        webbrowser.open(f"https://www.{site}.com")
-    except Exception as e:
-        talk("Sorry, there was an error opening the website.")
-        print(f"Error: {e}")
 
 
-# Function to create a database
+
+
 def create_database():
     cursor.execute("SHOW DATABASES")
     databases = [db[0] for db in cursor.fetchall()]
@@ -113,7 +105,7 @@ def create_database():
     talk(f"Using database {db_name}.")
 
 
-# Function to create a table
+
 def create_table():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS marks (
@@ -127,7 +119,6 @@ def create_table():
     talk("Table created successfully.")
 
 
-# Function to insert marks
 def insert_marks():
     talk("Let's insert student marks.")
     try:
@@ -163,7 +154,6 @@ def insert_marks():
         talk(f"Unexpected error: {e}")
 
 
-# Function to delete data
 def delete_data():
     student_id = input("Enter student ID to delete record: ").strip()
     cursor.execute("DELETE FROM marks WHERE student_id = %s", (student_id,))
@@ -186,7 +176,7 @@ def get_student_data():
         talk("No record found for the given Student ID.")
 
 
-# Function to retrieve highest marks
+
 def get_highest_marks():
     cursor.execute("SELECT student_name, subject, marks FROM marks ORDER BY marks DESC LIMIT 1")
     result = cursor.fetchone()
@@ -196,7 +186,6 @@ def get_highest_marks():
         talk("No records found.")
 
 
-# Function to retrieve lowest marks
 def get_lowest_marks():
     cursor.execute("SELECT student_name, subject, marks FROM marks ORDER BY marks ASC LIMIT 1")
     result = cursor.fetchone()
@@ -206,7 +195,7 @@ def get_lowest_marks():
         talk("No records found.")
 
 
-# Function to calculate mean marks
+
 def get_mean_marks():
     cursor.execute("SELECT AVG(marks) FROM marks")
     result = cursor.fetchone()
@@ -249,7 +238,7 @@ def edit_student_data():
     conn.commit()
 
 
-# Main function to run the assistant
+
 def run_assistant():
     wish_me()
     talk("How can I assist you?")
@@ -279,38 +268,6 @@ def run_assistant():
 
         elif 'edit record' in command or 'update student' in command:
             edit_student_data()
-
-        elif 'youtube search' in command:
-            search_query = command.replace('youtube search', '').strip()
-            webbrowser.open(f"https://www.youtube.com/results?search_query={search_query}")
-            talk("Here are your YouTube search results.")
-
-        elif 'google search' in command:
-            search_query = command.replace('google search', '').strip()
-            pywhatkit.search(search_query)
-            talk("Here are your Google search results.")
-
-        elif 'open website' in command:
-            open_website(command)
-
-
-
-
-
-        elif 'tell me about' in command or 'search' in command:
-            query = command.replace("tell me about", "").replace("search", "").strip()
-            try:
-                results = wikipedia.summary(query, sentences=2)
-                talk(f"According to Wikipedia, {results}")
-            except wikipedia.exceptions.DisambiguationError:
-                talk("There are multiple results. Please be more specific.")
-            except wikipedia.exceptions.PageError:
-                talk("No information found on Wikipedia.")
-
-        if 'time' in command:
-            time = datetime.datetime.now().strftime("%I:%M %p")
-            talk(f"The current time is {time}.")
-
 
 
         elif 'exit' in command:
